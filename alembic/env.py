@@ -6,12 +6,13 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.core.config import get_settings
-from app.core.database import Base
+from app.core.database import Base, normalize_database_url
 from app.models import candidate, evaluation, job  # noqa: F401
 
 config = context.config
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+database_url = normalize_database_url(settings.database_url) if settings.database_url else ""
+config.set_main_option("sqlalchemy.url", database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
