@@ -22,6 +22,6 @@ COPY --from=frontend-builder /build/frontend/dist ./frontend/dist
 
 RUN chmod +x /app/app/scripts/docker-entrypoint.sh
 
-EXPOSE 8000
+EXPOSE 8000 8080
 
 ENTRYPOINT ["/app/app/scripts/docker-entrypoint.sh"]
