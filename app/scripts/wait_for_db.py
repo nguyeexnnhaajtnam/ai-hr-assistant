@@ -5,13 +5,20 @@ import time
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.core.database import engine
+from app.core.config import get_settings
+from app.core.database import get_engine
 
 
 def main() -> None:
+    settings = get_settings()
+    if not settings.database_url:
+        print("DATABASE_URL is not configured. Skipping database wait.")
+        return
+
     timeout_seconds = 90
     delay_seconds = 2
     started_at = time.time()
+    engine = get_engine()
 
     while True:
         try:
