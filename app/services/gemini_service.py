@@ -16,6 +16,10 @@ class GeminiService:
 
     def __init__(self) -> None:
         settings = get_settings()
+        if not settings.gemini_api_key:
+            raise GeminiResponseError(
+                "GEMINI_API_KEY is not configured. The app can start, but JD/CV parsing requires Gemini."
+            )
         genai.configure(api_key=settings.gemini_api_key)
         self.model_name = settings.gemini_model
         self.model = genai.GenerativeModel(self.model_name)
