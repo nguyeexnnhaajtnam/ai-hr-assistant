@@ -1,0 +1,12 @@
+.env
+.venv/
+.run/
+__pycache__/
+*.pyc
+uploads/
+tmp_test_cv.docx
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
