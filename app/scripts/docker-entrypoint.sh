@@ -14,4 +14,6 @@ else
 fi
 
 echo "Starting app..."
-exec python -m uvicorn app.main:app --host 0.0.0.0 --port "${APP_PORT:-8000}"
+LISTEN_PORT="${PORT:-${APP_PORT:-8000}}"
+echo "Listening on port ${LISTEN_PORT}"
+exec python -m uvicorn app.main:app --host 0.0.0.0 --port "${LISTEN_PORT}"
