@@ -12,18 +12,26 @@ class Base(DeclarativeBase):
     pass
 
 
+def normalize_database_url(url: str) -> str:
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+psycopg://", 1)
+    if url.startswith("postgresql://") and "+psycopg" not in url:
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return url
+
+
 def _require_database_url() -> str:
     settings = get_settings()
     if not settings.database_url:
         raise DatabaseUnavailableError(
             "DATABASE_URL is not configured. Attach a Railway PostgreSQL service or set DATABASE_URL manually."
         )
-    return settings.database_url
+    return normalize_database_url(settings.database_url)
 
 
 @lru_cache
 def get_engine():
-    return create_engine(_require_database_url(), future=True)
+    return create_engine(_require_database_url(), future=True, pool_pre_ping=True)
 
 
 @lru_cache
