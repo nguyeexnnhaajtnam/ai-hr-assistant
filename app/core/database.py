@@ -5,6 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import get_settings
+from app.utils.exceptions import DatabaseUnavailableError
 
 
 class Base(DeclarativeBase):
@@ -14,7 +15,7 @@ class Base(DeclarativeBase):
 def _require_database_url() -> str:
     settings = get_settings()
     if not settings.database_url:
-        raise RuntimeError(
+        raise DatabaseUnavailableError(
             "DATABASE_URL is not configured. Attach a Railway PostgreSQL service or set DATABASE_URL manually."
         )
     return settings.database_url

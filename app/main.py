@@ -1,14 +1,17 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.routes.candidates import router as candidates_router
 from app.api.routes.jobs import router as jobs_router
 from app.core.config import get_settings
+from app.utils.exceptions import DatabaseUnavailableError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_DIST_DIR = PROJECT_ROOT / "frontend" / "dist"
@@ -35,6 +38,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(DatabaseUnavailableError)
+async def database_unavailable_handler(_: Request, exc: DatabaseUnavailableError) -> JSONResponse:
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_error_handler(_: Request, exc: SQLAlchemyError) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Database request failed. Verify the Railway PostgreSQL service is attached and migrations ran.",
+            "error": exc.__class__.__name__,
+        },
+    )
 
 app.include_router(jobs_router, tags=["jobs"])
 app.include_router(candidates_router, tags=["candidates"])
