@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str | None = Field(
+        default=None,
         validation_alias=AliasChoices(
             "DATABASE_URL",
             "DATABASE_PRIVATE_URL",
