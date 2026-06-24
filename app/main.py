@@ -54,8 +54,8 @@ async def sqlalchemy_error_handler(_: Request, exc: SQLAlchemyError) -> JSONResp
         },
     )
 
-app.include_router(jobs_router, tags=["jobs"])
-app.include_router(candidates_router, tags=["candidates"])
+app.include_router(jobs_router, prefix="/api", tags=["jobs"])
+app.include_router(candidates_router, prefix="/api", tags=["candidates"])
 
 if (FRONTEND_DIST_DIR / "assets").exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST_DIR / "assets"), name="frontend-assets")
@@ -79,3 +79,11 @@ def frontend_index():
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon() -> Response:
     return Response(status_code=204)
+
+
+@app.get("/{full_path:path}", include_in_schema=False, response_model=None)
+def frontend_spa_fallback(full_path: str):
+    index_file = FRONTEND_DIST_DIR / "index.html"
+    if index_file.exists() and full_path.split("/", 1)[0] in {"dashboard", "jobs", "candidates", "evaluations", "settings"}:
+        return HTMLResponse(index_file.read_text(encoding="utf-8"))
+    return JSONResponse(status_code=404, content={"detail": "Not found"})

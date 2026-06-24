@@ -10,6 +10,7 @@ import {
   Clock3,
   Cpu,
   Database,
+  Download,
   FileBadge2,
   FileSearch,
   FolderOpen,
@@ -22,7 +23,6 @@ import {
   Search,
   Settings,
   ShieldAlert,
-  Sparkles,
   Upload,
   UserRound,
   UsersRound,
@@ -47,7 +47,7 @@ type CreateJobForm = {
 
 type NavItem = {
   label: string;
-  icon: typeof Sparkles;
+  icon: typeof LayoutGrid;
   to: string;
 };
 
@@ -547,7 +547,7 @@ export default function App() {
           })}
         </nav>
 
-        <div className="sidebar-card">
+        <div className="sidebar-card sidebar-card-minimal">
           <div className="sidebar-card-header">
             <span className="section-kicker">Runtime</span>
             <StatusPill online={health === "online"} />
@@ -559,7 +559,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="operator">
+        <div className="operator operator-minimal">
           <div className="avatar avatar-admin">HR</div>
           <div>
             <strong>HR Admin</strong>
@@ -689,9 +689,44 @@ export default function App() {
 }
 
 function DashboardPage({ state }: { state: AppState }) {
-  const topCandidate = state.portfolioCandidates
-    .filter((candidate) => candidate.overall_score !== null)
-    .sort((left, right) => (right.overall_score ?? 0) - (left.overall_score ?? 0))[0];
+  const scoredCandidates = state.portfolioCandidates.filter((candidate) => candidate.overall_score !== null);
+  const pendingCandidates = state.portfolioCandidates.length - scoredCandidates.length;
+  const averageScore = scoredCandidates.length
+    ? scoredCandidates.reduce((total, candidate) => total + (candidate.overall_score ?? 0), 0) / scoredCandidates.length
+    : null;
+  const topCandidate = [...scoredCandidates].sort((left, right) => (right.overall_score ?? 0) - (left.overall_score ?? 0))[0];
+  const recommendationCounts = evaluationFilters
+    .filter((filter) => filter.key !== "all")
+    .map((filter) => ({
+      ...filter,
+      count: state.portfolioCandidates.filter((candidate) => candidate.recommendation === filter.key).length,
+    }));
+  const shortlistCount = recommendationCounts
+    .filter((item) => item.key === "strong_match" || item.key === "match")
+    .reduce((total, item) => total + item.count, 0);
+  const shortlistRate = scoredCandidates.length ? Math.round((shortlistCount / scoredCandidates.length) * 100) : 0;
+  const scoreBuckets = [
+    { label: "90-100", min: 90, max: 100 },
+    { label: "70-89", min: 70, max: 89.99 },
+    { label: "50-69", min: 50, max: 69.99 },
+    { label: "<50", min: 0, max: 49.99 },
+  ].map((bucket) => ({
+    ...bucket,
+    count: scoredCandidates.filter((candidate) => {
+      const score = candidate.overall_score ?? -1;
+      return score >= bucket.min && score <= bucket.max;
+    }).length,
+  }));
+  const jobsByLoad = [...state.jobs]
+    .map((job) => ({
+      id: job.id,
+      title: job.title,
+      created_at: job.created_at,
+      candidates: state.portfolioCandidates.filter((candidate) => candidate.job_id === job.id).length,
+    }))
+    .sort((left, right) => right.candidates - left.candidates || right.created_at.localeCompare(left.created_at))
+    .slice(0, 5);
+  const maxJobLoad = Math.max(1, ...jobsByLoad.map((job) => job.candidates));
 
   const recentJobs = [...state.jobs]
     .sort((left, right) => right.created_at.localeCompare(left.created_at))
@@ -709,31 +744,84 @@ function DashboardPage({ state }: { state: AppState }) {
         meta={
           <>
             <StatusPill online={state.health === "online"} />
-            <Badge tone="neutral">Local MVP</Badge>
-            <Badge tone="accent">Rule-based scoring</Badge>
+            <span>{state.jobs.length} active roles</span>
+            <span>{state.portfolioCandidates.length} candidates tracked</span>
           </>
         }
         actions={
-          <button className="primary-button" type="button" onClick={state.openCreateJobModal}>
-            <Plus size={16} />
-            <span>New Job</span>
+          <button className="primary-button print-action" type="button" onClick={() => window.print()}>
+            <Download size={16} />
+            <span>Export PDF</span>
           </button>
         }
       />
 
       <section className="metric-grid">
-        <MetricCard label="Active jobs" value={String(state.jobs.length)} hint="+1 this week" />
-        <MetricCard label="Candidates" value={String(state.portfolioCandidates.length)} hint="+8 this week" />
+        <MetricCard label="Active jobs" value={String(state.jobs.length)} hint="Open roles in pipeline" />
+        <MetricCard label="Scored candidates" value={`${scoredCandidates.length}/${state.portfolioCandidates.length}`} hint={`${pendingCandidates} pending review`} />
         <MetricCard
-          label="Top score"
-          value={topCandidate?.overall_score?.toFixed(1) ?? "--"}
-          hint={topCandidate ? `${topCandidate.name ?? "Candidate"}` : "No ranked candidate yet"}
+          label="Average score"
+          value={averageScore !== null ? averageScore.toFixed(1) : "--"}
+          hint={topCandidate ? `Top: ${topCandidate.name ?? "Candidate"} ${topCandidate.overall_score?.toFixed(1)}` : "No ranked candidate yet"}
         />
-        <MetricCard label="Scoring mode" value="Rule-based" hint="Backend scoring" />
+        <MetricCard label="Shortlist rate" value={`${shortlistRate}%`} hint={`${shortlistCount} match or strong match`} />
       </section>
 
       <section className="dashboard-grid">
-        <article className="surface-card">
+        <article className="surface-card surface-panel analytics-panel">
+          <SectionHeader eyebrow="Analysis" title="Recommendation mix" action={<span className="section-meta">{scoredCandidates.length} scored</span>} />
+          <div className="analytics-body">
+            <div className="bar-list">
+              {recommendationCounts.map((item) => (
+                <div className="bar-row" key={item.key}>
+                  <div className="bar-row-head">
+                    <span className={`recommendation-text tone-${recommendationMap[item.key as Recommendation].tone}`}>{item.label}</span>
+                    <strong>{item.count}</strong>
+                  </div>
+                  <div className="track-bar">
+                    <span style={{ width: `${percentage(item.count, Math.max(1, scoredCandidates.length))}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </article>
+
+        <article className="surface-card surface-panel analytics-panel">
+          <SectionHeader eyebrow="Scores" title="Score distribution" action={<span className="section-meta">0-100 scale</span>} />
+          <div className="analytics-body score-histogram">
+            {scoreBuckets.map((bucket) => (
+              <div className="histogram-column" key={bucket.label}>
+                <div className="histogram-bar">
+                  <span style={{ height: `${percentage(bucket.count, Math.max(1, scoredCandidates.length))}%` }} />
+                </div>
+                <strong>{bucket.count}</strong>
+                <span>{bucket.label}</span>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="surface-card surface-panel analytics-panel dashboard-overview-strip">
+          <SectionHeader eyebrow="Workload" title="Candidates by job" action={<span className="section-meta">Top {jobsByLoad.length || 0} roles</span>} />
+          <div className="analytics-body workload-list">
+            {jobsByLoad.length ? (
+              jobsByLoad.map((job) => (
+                <button type="button" className="workload-row" key={job.id} onClick={() => state.openJob(job.id, "/jobs")}>
+                  <span>{job.title}</span>
+                  <div className="track-bar">
+                    <span style={{ width: `${percentage(job.candidates, maxJobLoad)}%` }} />
+                  </div>
+                  <strong>{job.candidates}</strong>
+                </button>
+              ))
+            ) : (
+              <EmptyMini text="No job workload to analyze yet." />
+            )}
+          </div>
+        </article>
+
+        <article className="surface-card surface-panel">
           <SectionHeader
             eyebrow="Jobs"
             title="Recent jobs"
@@ -787,7 +875,7 @@ function DashboardPage({ state }: { state: AppState }) {
           )}
         </article>
 
-        <article className="surface-card">
+        <article className="surface-card surface-panel">
           <SectionHeader
             eyebrow="Candidates"
             title="Recent candidates"
@@ -822,11 +910,9 @@ function DashboardPage({ state }: { state: AppState }) {
                       <td>{candidate.overall_score?.toFixed(1) ?? "--"}</td>
                       <td>
                         {candidate.recommendation ? (
-                          <Badge tone={recommendationMap[candidate.recommendation].tone}>
-                            {recommendationMap[candidate.recommendation].label}
-                          </Badge>
+                          <RecommendationText recommendation={candidate.recommendation} />
                         ) : (
-                          <Badge tone="neutral">Pending</Badge>
+                          <span className="recommendation-text tone-neutral">Pending</span>
                         )}
                       </td>
                       <td>{formatDate(candidate.created_at)}</td>
@@ -840,14 +926,13 @@ function DashboardPage({ state }: { state: AppState }) {
           )}
         </article>
 
-        <article className="surface-card dashboard-overview-strip">
+        <article className="surface-card surface-panel dashboard-overview-strip">
           <SectionHeader eyebrow="System status" title="System overview" />
           <div className="status-strip">
             <StatusOverviewItem label="API status" value={state.health === "online" ? "Online" : "Offline"} detail="Backend is running normally" icon={<CheckCircle2 size={14} />} tone={state.health === "online" ? "success" : "danger"} />
-            <StatusOverviewItem label="Gemini" value={formatGeminiStatus(state.geminiStatus)} detail="AI parsing and feedback enabled" icon={<Sparkles size={14} />} tone={state.geminiStatus === "not_configured" ? "danger" : "success"} />
+            <StatusOverviewItem label="Gemini" value={formatGeminiStatus(state.geminiStatus)} detail="Parsing service status" icon={<Cpu size={14} />} tone={state.geminiStatus === "not_configured" ? "danger" : "success"} />
             <StatusOverviewItem label="Storage" value="Local filesystem" detail="Uploads stored locally" icon={<FolderOpen size={14} />} tone="accent" />
             <StatusOverviewItem label="Scoring" value="Rule-based" detail="Backend scoring engine" icon={<ShieldAlert size={14} />} tone="accent" />
-            <StatusOverviewItem label="Last updated" value={formatDateTime(new Date().toISOString())} detail="Auto refresh every load" icon={<Clock3 size={14} />} tone="neutral" />
           </div>
         </article>
       </section>
@@ -864,9 +949,6 @@ function JobsPage({ state }: { state: AppState }) {
         meta={
           state.selectedJob ? (
             <>
-              <StatusPill online={state.health === "online"} />
-              <Badge tone="success">Active</Badge>
-              <Badge tone="accent">Live parsed</Badge>
               <span>{state.candidates.length} candidates</span>
               <span>Created {formatDate(state.selectedJob.created_at)}</span>
             </>
@@ -889,11 +971,10 @@ function CandidatesPage({ state }: { state: AppState }) {
     <>
       <PageHeader
         eyebrow="Candidates"
-        title="Candidate workspace"
+        title={state.selectedJob ? state.selectedJob.title : "Candidate workspace"}
         meta={
           <>
             <StatusPill online={state.health === "online"} />
-            {state.selectedJob ? <Badge tone="accent">{state.selectedJob.title}</Badge> : null}
             <span>{state.filteredCandidates.length} candidates in view</span>
           </>
         }
@@ -925,13 +1006,12 @@ function EvaluationsPage({ state }: { state: AppState }) {
         meta={
           <>
             <StatusPill online={state.health === "online"} />
-            <Badge tone="accent">Rule-based scoring</Badge>
             <span>{visibleRows.length} rows</span>
           </>
         }
       />
 
-      <section className="surface-card">
+      <section className="surface-card surface-panel">
         <div className="toolbar-row">
           <div className="filters-row">
             {evaluationFilters.map((filter) => (
@@ -985,11 +1065,9 @@ function EvaluationsPage({ state }: { state: AppState }) {
                       <td>{candidate.overall_score?.toFixed(1) ?? "--"}</td>
                       <td>
                         {candidate.recommendation ? (
-                          <Badge tone={recommendationMap[candidate.recommendation].tone}>
-                            {recommendationMap[candidate.recommendation].label}
-                          </Badge>
+                          <RecommendationText recommendation={candidate.recommendation} />
                         ) : (
-                          <Badge tone="neutral">Pending</Badge>
+                          <span className="recommendation-text tone-neutral">Pending</span>
                         )}
                       </td>
                       <td>{detail?.evaluation?.matched_skills.length ?? "--"}</td>
@@ -1006,12 +1084,7 @@ function EvaluationsPage({ state }: { state: AppState }) {
         )}
 
         <div className="table-footer">
-          <span>Showing 1 to {visibleRows.length} of {visibleRows.length} results</span>
-          <div className="pagination-mock">
-            <button type="button" className="page-chip active">1</button>
-            <button type="button" className="page-chip">2</button>
-            <button type="button" className="page-chip">3</button>
-          </div>
+          <span>Showing {visibleRows.length} results</span>
         </div>
       </section>
     </>
@@ -1023,7 +1096,7 @@ function SettingsPage({ state }: { state: AppState }) {
     <>
       <PageHeader
         eyebrow="Settings"
-        title="Runtime and limitations"
+        title="System settings"
         meta={
           <>
             <StatusPill online={state.health === "online"} />
@@ -1039,7 +1112,7 @@ function SettingsPage({ state }: { state: AppState }) {
           <StatusLine label="Local upload path" value="uploads/" />
         </InfoPanel>
 
-        <InfoPanel title="AI usage" icon={<Sparkles size={16} />}>
+        <InfoPanel title="Parsing" icon={<FileBadge2 size={16} />}>
           <BulletCopy text="JD parsing" />
           <BulletCopy text="CV parsing" />
           <BulletCopy text="Feedback generation" />
@@ -1074,7 +1147,7 @@ function JobsWorkspace({ state }: { state: AppState }) {
   return (
     <section className="screen-layout">
       <aside className="screen-rail">
-        <article className="surface-card rail-card tight">
+        <article className="surface-card rail-card rail-card-minimal tight">
           <SectionHeader
             eyebrow="Jobs"
             title="Open roles"
@@ -1092,13 +1165,11 @@ function JobsWorkspace({ state }: { state: AppState }) {
                 >
                   <div className="job-card-top">
                     <strong>{job.title}</strong>
-                    <Badge tone="success">Active</Badge>
                   </div>
                   <div className="job-card-meta">
                     <span>{candidateCount} candidates</span>
                     <span>{formatDate(job.created_at)}</span>
                   </div>
-                  <p>{summarizeSkills(job.requirements.required_skills)}</p>
                 </button>
               );
             })}
@@ -1132,7 +1203,7 @@ function CandidatesWorkspace({ state }: { state: AppState }) {
   return (
     <section className="screen-layout">
       <aside className="screen-rail">
-        <article className="surface-card rail-card tight">
+        <article className="surface-card rail-card rail-card-minimal tight">
           <div className="search-row">
             <Search size={16} />
             <input
@@ -1213,7 +1284,7 @@ function JobDetailScreen({ state }: { state: AppState }) {
 
   return (
     <div className="detail-column">
-      <article className="surface-card job-detail-shell">
+      <article className="surface-card surface-panel job-detail-shell job-detail-minimal">
         <div className="job-detail-header">
           <div>
             <p className="eyebrow">Jobs</p>
@@ -1221,9 +1292,9 @@ function JobDetailScreen({ state }: { state: AppState }) {
             <div className="meta-row compact">
               <span>Created {formatDate(job.created_at)}</span>
               <span>{state.candidates.length} candidates</span>
-              <Badge tone="success">Active</Badge>
             </div>
           </div>
+          <span className="corner-status">Active</span>
           <div className="header-actions">
             <button type="button" className="ghost-button" onClick={() => state.openEditJobModal(job)}>
               <FileSearch size={14} />
@@ -1238,30 +1309,38 @@ function JobDetailScreen({ state }: { state: AppState }) {
           </div>
         </div>
 
-        <div className="job-detail-grid">
-          <article className="surface-card nested-card">
-            <SectionHeader eyebrow="Job description" title="Role summary" />
+        <div className="job-detail-overview">
+          <section className="job-detail-section">
+            <SectionHeader title="Role summary" />
             <p className="job-description-text">{job.description}</p>
-            <div className="tag-list">
-              {(job.requirements.required_skills ?? []).slice(0, 5).map((skill) => (
-                <span key={skill.name} className="tag neutral">{skill.name}</span>
-              ))}
-            </div>
-          </article>
+          </section>
 
-          <article className="surface-card nested-card">
-            <SectionHeader eyebrow="Job weights" title="Scoring weights" />
-            <div className="status-line"><span>Skills weight</span><strong>{formatWeight(calculateSkillWeight(job))}</strong></div>
-            <div className="status-line"><span>Experience weight</span><strong>{formatWeight(job.requirements.experience_weight ?? 0)}</strong></div>
-            <div className="status-line"><span>Domain weight</span><strong>{formatWeight(job.requirements.domain_weight ?? 0)}</strong></div>
-          </article>
+          <aside className="job-detail-sidepanel">
+            <section className="job-detail-section compact">
+              <SectionHeader title="Scoring" />
+              <div className="status-line"><span>Skills</span><strong>{formatWeight(calculateSkillWeight(job))}</strong></div>
+              <div className="status-line"><span>Experience</span><strong>{formatWeight(job.requirements.experience_weight ?? 0)}</strong></div>
+              <div className="status-line"><span>Domain</span><strong>{formatWeight(job.requirements.domain_weight ?? 0)}</strong></div>
+            </section>
+
+            {(job.requirements.required_skills ?? []).length ? (
+              <section className="job-detail-section compact">
+                <SectionHeader title="Key skills" />
+                <div className="tag-list minimal">
+                  {(job.requirements.required_skills ?? []).slice(0, 6).map((skill) => (
+                    <span key={skill.name} className="tag neutral">{skill.name}</span>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </aside>
         </div>
 
-        <article className="surface-card nested-card">
-          <SectionHeader eyebrow={`Candidates (${state.candidates.length})`} title="Candidate ranking" />
+        <article className="job-detail-section ranking-section">
+          <SectionHeader eyebrow={`${state.candidates.length} candidates`} title="Candidate ranking" />
           {state.candidates.length ? (
             <div className="table-wrap">
-              <table className="data-table">
+              <table className="data-table compact-table">
                 <thead>
                   <tr>
                     <th>Rank</th>
@@ -1285,11 +1364,9 @@ function JobDetailScreen({ state }: { state: AppState }) {
                       <td>{candidate.overall_score?.toFixed(1) ?? "--"}</td>
                       <td>
                         {candidate.recommendation ? (
-                          <Badge tone={recommendationMap[candidate.recommendation].tone}>
-                            {recommendationMap[candidate.recommendation].label}
-                          </Badge>
+                          <RecommendationText recommendation={candidate.recommendation} />
                         ) : (
-                          <Badge tone="neutral">Pending</Badge>
+                          <span className="recommendation-text tone-neutral">Pending</span>
                         )}
                       </td>
                       <td>{formatDate(candidate.created_at)}</td>
@@ -1338,11 +1415,6 @@ function CandidateDetailPanel({ state, mode }: { state: AppState; mode: "jobs" |
   const detail = state.candidateDetail;
   const evaluation = detail.evaluation;
   const totalBreakdown = evaluation?.score_breakdown.total;
-  const liveParsed = Boolean(
-    detail.parsed_cv.summary ||
-    detail.parsed_cv.skills?.length ||
-    detail.parsed_cv.current_title,
-  );
 
   return (
     <motion.div
@@ -1365,7 +1437,6 @@ function CandidateDetailPanel({ state, mode }: { state: AppState; mode: "jobs" |
               ) : (
                 <Badge tone="neutral">Pending</Badge>
               )}
-              {liveParsed ? <Badge tone="accent">Live parsed</Badge> : null}
             </div>
 
             <div className="contact-grid">
@@ -1520,7 +1591,7 @@ function renderTab(tab: TabKey, candidate: CandidateDetail) {
     case "overview":
       return (
         <>
-          <InfoPanel title="Summary" icon={<Sparkles size={16} />} wide>
+          <InfoPanel title="Summary" icon={<FileBadge2 size={16} />} wide>
             <p>{candidate.parsed_cv.summary ?? "No summary was extracted from the CV."}</p>
           </InfoPanel>
 
@@ -1542,7 +1613,7 @@ function renderTab(tab: TabKey, candidate: CandidateDetail) {
                     {evaluation.matched_skills.map((skill) => (
                       <span className="tag success" key={`${skill.name}-${skill.type}`}>
                         {skill.name}
-                        {skill.candidate_evidence?.years ? ` · ${skill.candidate_evidence.years}y` : ""}
+                        {skill.candidate_evidence?.years ? ` - ${skill.candidate_evidence.years}y` : ""}
                       </span>
                     ))}
                   </div>
@@ -1613,7 +1684,7 @@ function renderTab(tab: TabKey, candidate: CandidateDetail) {
             )}
           </InfoPanel>
 
-          <InfoPanel title="Experience reasoning" icon={<Sparkles size={16} />}>
+          <InfoPanel title="Experience reasoning" icon={<UserRound size={16} />}>
             <p>{evaluation?.score_breakdown.experience?.reason ?? "No experience reasoning available."}</p>
           </InfoPanel>
 
@@ -1625,7 +1696,7 @@ function renderTab(tab: TabKey, candidate: CandidateDetail) {
 
     case "feedback":
       return (
-        <InfoPanel title="Hiring feedback" icon={<Sparkles size={16} />} wide>
+        <InfoPanel title="Hiring feedback" icon={<FileBadge2 size={16} />} wide>
           <p className="feedback-copy">{evaluation?.feedback ?? "No feedback generated yet."}</p>
         </InfoPanel>
       );
@@ -1750,6 +1821,11 @@ function Badge({
   return <span className={`badge tone-${tone}`}>{children}</span>;
 }
 
+function RecommendationText({ recommendation }: { recommendation: Recommendation }) {
+  const item = recommendationMap[recommendation];
+  return <span className={`recommendation-text tone-${item.tone}`}>{item.label}</span>;
+}
+
 function MetricCard({
   label,
   value,
@@ -1805,7 +1881,7 @@ function EmptyPanel({
 }) {
   return (
     <div className={`empty-panel ${compact ? "compact" : ""}`}>
-      <div className="empty-icon"><Sparkles size={18} /></div>
+      <div className="empty-icon"><FileBadge2 size={18} /></div>
       <h3>{title}</h3>
       <p>{description}</p>
       {actionLabel && onAction ? (
@@ -1898,7 +1974,7 @@ function summarizeSkills(skills?: Array<{ name: string; weight: number }>) {
   }
 
   const names = skills.slice(0, 4).map((skill) => skill.name);
-  return names.join(" · ");
+  return names.join(" - ");
 }
 
 function calculateSkillWeight(job: Job) {
@@ -1909,6 +1985,13 @@ function calculateSkillWeight(job: Job) {
 
 function formatWeight(value: number) {
   return `${Number(value || 0).toFixed(0)}%`;
+}
+
+function percentage(value: number, total: number) {
+  if (total <= 0) {
+    return 0;
+  }
+  return Math.min(100, Math.round((value / total) * 100));
 }
 
 function formatYears(value?: number | null) {
